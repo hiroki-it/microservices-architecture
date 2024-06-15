@@ -1,0 +1,84 @@
+variables:
+  CONTAINER_IMAGE: registry.gitlab.com/${CI_PROJECT_PATH}
+  TRIVY_VERSION: 0.36.1
+
+stages:
+  - stage-build
+  - stage-push
+  - stage-tag-image
+  - stage-gitlab-release
+
+build:
+  stage: stage-build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    # Kanikoのコマンドを実行し、コンテナイメージのビルドとプッシュを実行
+    # no-push：コンテナレジストリへプッシュしない
+    # tar-path；コンテナイメージをローカルファイルとして出力する際のファイル名
+    - /kaniko/executor
+      --context ${CI_PROJECT_DIR}
+      --dockerfile ${CI_PROJECT_DIR}/Dockerfile
+      --no-push
+      --destination ${CONTAINER_IMAGE}:${CI_COMMIT_SHA}
+      --tar-path image.tar
+  artifacts:
+    paths:
+      - image.tar
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+push:
+  stage: stage-push
+  image:
+    name: alpine:3.17.1
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    # skopeoのインストール
+    - apk add --no-cache skopeo
+    # コンテナレジストリへのログイン
+    - skopeo login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # tarのコンテナイメージを、コンテナレジストリへプッシュ
+    # コンテナイメージ名は${CONTAINER_IMAGE}:${CI_COMMIT_SHA}
+    - skopeo copy docker-archive:image.tar docker://${CONTAINER_IMAGE}:${CI_COMMIT_SHA}
+  dependencies:
+    - build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+tag-image:
+  stage: stage-tag-image
+  image:
+    name: alpine:3.17.1
+    entrypoint: [""]
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    # skopeoのインストール
+    - apk add --no-cache skopeo
+    # コンテナレジストリへのログイン
+    - skopeo login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # ${CI_COMMIT_SHA}のdigest値のタグが付与されたコンテナイメージを、latestタグのコンテナイメージとしてコピー
+    - skopeo copy docker://${CONTAINER_IMAGE}:${CI_COMMIT_SHA} docker://${CONTAINER_IMAGE}:latest
+    # 上記と同様に、Gitのtag名をコンテナイメージタグに付与したコンテナイメージとしてコピー
+    - skopeo copy docker://${CONTAINER_IMAGE}:${CI_COMMIT_SHA} docker://${CONTAINER_IMAGE}:${CI_COMMIT_TAG}
+  rules:
+    - if: $CI_COMMIT_TAG
+
+gitlab-release:
+  stage: stage-gitlab-release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  script:
+    - echo "Running the release job."
+  release:
+    tag_name: ${CI_COMMIT_TAG}
+    description: changelog.md # リリースの詳細情報を記載。Markdownファイルを指定することも可能
+    name: 'Release $CI_COMMIT_TAG' # GitLabリリースの名前を定義
+  rules:
+    - if: $CI_COMMIT_TAG
