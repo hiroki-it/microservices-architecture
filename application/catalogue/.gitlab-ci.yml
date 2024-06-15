@@ -1,0 +1,185 @@
+variables:
+  CONTAINER_IMAGE: registry.gitlab.com/${CI_PROJECT_PATH}
+  TRIVY_VERSION: 0.36.1
+
+stages:
+  - stage-config-scan
+  - stage-lint
+  - stage-test
+  - stage-build
+  - stage-image-scan
+  - stage-push
+  - stage-tag-image
+  - stage-gitlab-release
+
+config-scan:
+  stage: stage-config-scan
+  image:
+    name: public.ecr.aws/aquasecurity/trivy:${TRIVY_VERSION}
+    entrypoint: [""]
+  script:
+    # スキャンの全レポートをGitLabのUIから確認できるように出力
+    - trivy --cache-dir .trivycache/ config --exit-code 0 --format template --template "@/contrib/gitlab-codequality.tpl" -o $CI_PROJECT_DIR/gl-code-quality-report.json .
+    # スキャンの結果、CRITICALの重大度がある場合、エラー終了させる
+    - trivy --cache-dir .trivycache/ config --exit-code 1 .
+  cache:
+    paths:
+      - .trivycache/
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-report.json
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+lint:
+  stage: stage-lint
+  image:
+    name: golangci/golangci-lint:v1.50.1
+    entrypoint: [""]
+  script:
+    # golangci-lintを実行し、フォーマットチェック＆ソースコード解析のレポートを出力（Code Climate形式）
+    - golangci-lint run --out-format code-climate ./... > gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json # チェック・解析した結果をレポートを指定
+    paths:
+      - gl-code-quality-report.json # チェック・解析した結果をレポートを指定
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+test:
+  stage: stage-test
+  image: public.ecr.aws/docker/library/golang:1.19.2-alpine3.16
+  before_script:
+    - apk add --no-cache gcc libc-dev
+  script:
+    # テスト実行、およびJUnitのテストレポート(XML)とカバレッジレポートを出力(Text)するツールをインストール
+    - go install gotest.tools/gotestsum@v1.8.2
+    # カバレッジレポート(Text)をCoberturaレポート(XML)へ変換するツールをインストール
+    - go install github.com/boumenot/gocover-cobertura@v1.2.0
+    # A:gotestsumを利用し、JUnitのテストレポート(XML)とカバレッジレポートを出力(Text)
+    - gotestsum --junitfile junit-report.xml -- -coverprofile=coverprofile.txt ./...
+    # B:カバレッジレポート(Text)をCoberturaレポート(XML)へ変換
+    - gocover-cobertura < coverprofile.txt > coverprofile.xml
+    # C:各テストカバレッジ、および総カバレッジ率を出力
+    - go tool cover -func=coverprofile.txt
+  coverage: "/total:.+%/" # 「C」の結果から正規表現にて総カバレッジ率の箇所を指定
+  artifacts:
+    when: always
+    reports:
+      junit: junit-report.xml # 「A」の出力ファイルを指定
+      coverage_report: # 「B」の出力ファイルを指定
+        coverage_format: cobertura
+        path: coverprofile.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+build:
+  stage: stage-build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    # Kanikoのコマンドを実行し、コンテナイメージのビルドとプッシュを実行
+    # no-push：コンテナレジストリへプッシュしない
+    # tar-path；コンテナイメージをローカルファイルとして出力する際のファイル名
+    - /kaniko/executor
+      --context ${CI_PROJECT_DIR}
+      --dockerfile ${CI_PROJECT_DIR}/Dockerfile
+      --no-push
+      --destination ${CONTAINER_IMAGE}:${CI_COMMIT_SHA}
+      --tar-path image.tar
+  artifacts:
+    paths:
+      - image.tar
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+push:
+  stage: stage-push
+  image:
+    name: alpine:3.17.1
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    # skopeoのインストール
+    - apk add --no-cache skopeo
+    # コンテナレジストリへのログイン
+    - skopeo login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # tarのコンテナイメージを、コンテナレジストリへプッシュ
+    # コンテナイメージ名は${CONTAINER_IMAGE}:${CI_COMMIT_SHA}
+    - skopeo copy docker-archive:image.tar docker://${CONTAINER_IMAGE}:${CI_COMMIT_SHA}
+  dependencies:
+    - build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+image-scan:
+  stage: stage-image-scan
+  image:
+    name: public.ecr.aws/aquasecurity/trivy:${TRIVY_VERSION}
+    entrypoint: [""]
+  variables:
+    GIT_STRATEGY: none
+  script:
+    # 同一のコンテナイメージ名をスキャンする場合、Trivyのキャッシュクリアを実施
+    - trivy image --clear-cache
+    # Trivyのデータベース情報を取得
+    - trivy image --download-db-only --no-progress --cache-dir .trivycache/
+    # コンテナイメージ（image.tar）をスキャンし、GitLabがサポートする形式でレポート出力
+    - trivy --cache-dir .trivycache/ image --exit-code 0 --no-progress --format template --template "@/contrib/gitlab.tpl" -o $CI_PROJECT_DIR/gl-container-scanning-report.json --input image.tar
+    # スキャンの全レポートをGitLabのUIから確認できるように出力
+    - trivy --cache-dir .trivycache/ image --exit-code 0 --no-progress --input image.tar 
+    # スキャンの結果、CRITICALの重大度がある場合、エラー終了させる
+    - trivy --cache-dir .trivycache/ image --exit-code 1 --severity CRITICAL --no-progress --input image.tar
+  dependencies:
+    - build
+  cache:
+    paths:
+      - .trivycache/
+  artifacts:
+    when: always
+    reports:
+      container_scanning: gl-container-scanning-report.json
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'main'
+
+tag-image:
+  stage: stage-tag-image
+  image:
+    name: alpine:3.17.1
+    entrypoint: [""]
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    # skopeoのインストール
+    - apk add --no-cache skopeo
+    # コンテナレジストリへのログイン
+    - skopeo login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # ${CI_COMMIT_SHA}のdigest値のタグが付与されたコンテナイメージを、latestタグのコンテナイメージとしてコピー
+    - skopeo copy docker://${CONTAINER_IMAGE}:${CI_COMMIT_SHA} docker://${CONTAINER_IMAGE}:latest
+    # 上記と同様に、Gitのtag名をコンテナイメージタグに付与したコンテナイメージとしてコピー
+    - skopeo copy docker://${CONTAINER_IMAGE}:${CI_COMMIT_SHA} docker://${CONTAINER_IMAGE}:${CI_COMMIT_TAG}
+  rules:
+    - if: $CI_COMMIT_TAG
+
+gitlab-release:
+  stage: stage-gitlab-release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  script:
+    - echo "Running the release job."
+  release:
+    tag_name: ${CI_COMMIT_TAG}
+    description: changelog.md # リリースの詳細情報を記載。Markdownファイルを指定することも可能
+    name: 'Release $CI_COMMIT_TAG' # GitLabリリースの名前を定義
+  rules:
+    - if: $CI_COMMIT_TAG
