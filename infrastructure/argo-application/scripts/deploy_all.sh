@@ -1,6 +1,4 @@
 #!/bin/bash
-cd `dirname $0`
-cd ..
 
 kubectl apply -f common.yaml
 kubectl apply -f frontend-application.yaml

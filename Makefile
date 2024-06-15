@@ -5,10 +5,11 @@ setup-go-tools:
 	source ~/.zshrc
 
 setup-kind:
-	source infrastructure/setup/scripts/setup_kind.sh
+	bash infrastructure/setup/scripts/setup_kind.sh
 
 setup-istio:
-	source infrastructure/setup/scripts/setup_istio.sh
+	bash infrastructure/setup/scripts/setup_istio.sh
 
 setup-argo-cd:
-	source infrastructure/setup/scripts/setup_argo-cd.sh
+	bash infrastructure/setup/scripts/setup_argo-cd.sh
+	bash infrastructure/argo-application/scripts/deploy_all.sh

@@ -1,6 +1,4 @@
 #!/bin/bash
-cd `dirname $0`
-cd ..
 
 echo "Create kind cluster"
 kind create cluster --config kind/kind-config.yaml
