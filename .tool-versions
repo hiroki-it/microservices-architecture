@@ -1,0 +1,6 @@
+golang 1.19.3
+istioctl 1.17.2
+kubectl 1.25.0
+kind 0.17.0
+nodejs 19.7.0
+protoc 21.9
