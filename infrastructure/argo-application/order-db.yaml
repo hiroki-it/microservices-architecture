@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default # 管理対象のProjectを定義（defaultは標準で作成される）
   source:
-    repoURL: https://gitlab.com/gihyo-ms-dev-book/showcase/all-in-one/infrastracture/deployment.git # 同期対象のGitLabリポジトリのURL
+    repoURL: https://github.com/hiroki-it/infrastracture/deployment.git # 同期対象のGitLabリポジトリのURL
     targetRevision: HEAD # 同期対象のリポジトリにおけるGitリビジョン
     path: order-db/overlays/prod # 同期対象のディレクトリ
   destination:
