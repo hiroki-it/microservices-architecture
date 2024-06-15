@@ -1,4 +1,5 @@
 golang 1.19.3
+helmfile 0.165.0
 istioctl 1.17.2
 kubectl 1.25.0
 kind 0.17.0
