@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/hiroki-it/microservices-architecture.git # 同期対象のGitLabリポジトリのURL
     targetRevision: HEAD # 同期対象のリポジトリにおけるGitリビジョン
-    path: order/overlays/prod # 同期対象のディレクトリ
+    path: infrastructure/deployment/order/overlays/prod # 同期対象のディレクトリ
   destination:
     server: https://kubernetes.default.svc
   syncPolicy: # GitリポジトリとKubernetesクラスタ上との状態の同期ポリシー
