@@ -1,0 +1,16 @@
+- op: add
+  path: /spec/template/spec/containers/0/livenessProbe
+  value: 
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 5
+- op: add
+  path: /spec/template/spec/containers/0/redinessProbe
+  value: 
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 5

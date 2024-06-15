@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: default
+  labels:
+    app: rabbitmq
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+        version: v1
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3.11-management
+        ports:
+        - containerPort: 15672
+          name: management
+        - containerPort: 5672
+          name: rabbitmq

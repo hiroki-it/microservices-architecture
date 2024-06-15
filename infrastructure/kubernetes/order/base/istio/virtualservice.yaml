@@ -1,0 +1,13 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: order
+  namespace: default
+spec:
+  hosts:
+  - order
+  http:
+  - route:
+    - destination:
+        host: order
+        subset: v1

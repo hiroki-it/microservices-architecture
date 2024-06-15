@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bff
+  namespace: default
+  labels:
+    app: bff
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bff
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: bff
+        version: v1
+    spec:
+      containers:
+      - name: bff
+        image: registry.gitlab.com/gihyo-ms-dev-book/showcase/all-in-one/application/bff
+        env:
+        - name: CATALOGUE_CLIENT_URI
+          value: "catalogue:50051"
+        - name: ORDER_CLIENT_URI
+          value: "order:50052"
+        ports:
+        - containerPort: 4000
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4000
+          initialDelaySeconds: 5
+          periodSeconds: 5

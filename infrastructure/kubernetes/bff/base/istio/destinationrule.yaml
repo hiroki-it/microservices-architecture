@@ -1,0 +1,11 @@
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: bff
+  namespace: default
+spec:
+  host: bff
+  subsets:
+  - name: v1
+    labels:
+      version: v1

@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogue-db
+  namespace: default
+  labels:
+    app: catalogue-db
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalogue-db
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: catalogue-db
+        version: v1
+    spec:
+      containers:
+      - name: catalogue-db
+        image: registry.gitlab.com/gihyo-ms-dev-book/showcase/all-in-one/application/catalogue-db
+        ports:
+        - containerPort: 3306

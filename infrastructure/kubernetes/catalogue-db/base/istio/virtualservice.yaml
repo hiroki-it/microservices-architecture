@@ -1,0 +1,13 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: catalogue
+  namespace: default
+spec:
+  hosts:
+  - catalogue
+  http:
+  - route:
+    - destination:
+        host: catalogue
+        subset: v1
